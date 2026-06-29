@@ -27,8 +27,8 @@ import com.example.composecustomerapp.ui.components.ProductCard
 
 @Composable
 fun FrozenFoodsScreen(
-    viewModel: FrozenFoodsViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    viewModel: FrozenFoodsViewModel = viewModel(factory = FrozenFoodsViewModel.Factory),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateToLogin: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},

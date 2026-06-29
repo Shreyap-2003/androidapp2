@@ -24,8 +24,8 @@ import com.example.composecustomerapp.ui.components.ProductCard
 
 @Composable
 fun CookiesScreen(
-    viewModel: CookiesViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    viewModel: CookiesViewModel = viewModel(factory = CookiesViewModel.Factory),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateToLogin: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},

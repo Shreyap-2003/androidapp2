@@ -28,8 +28,8 @@ import com.example.composecustomerapp.ui.components.ProductCard
 
 @Composable
 fun NoodlesScreen(
-    viewModel: NoodlesViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    viewModel: NoodlesViewModel = viewModel(factory = NoodlesViewModel.Factory),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateToLogin: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},

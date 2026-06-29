@@ -1,21 +1,23 @@
 package com.example.composecustomerapp.ui.login
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -30,20 +32,157 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.composecustomerapp.ui.components.BlingLabel
 import com.example.composecustomerapp.ui.components.BlingTextField
 import com.example.composecustomerapp.ui.components.BlingYellow
+import com.google.firebase.messaging.FirebaseMessaging
 
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel = viewModel(factory = LoginViewModel.Factory),
     onNavigateToRegister: () -> Unit = {},
-    onLoginSuccess: () -> Unit = {},
+    onLoginSuccess: (String) -> Unit = {},
     onLogoClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    var showForgotPasswordDialog by remember { mutableStateOf(false) }
+
+    if (showForgotPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showForgotPasswordDialog = false
+                viewModel.resetForgotPasswordState()
+            },
+            title = {
+                Text(
+                    text = when {
+                        uiState.isOtpVerified -> "Reset Password"
+                        uiState.isOtpSent -> "Verify OTP"
+                        else -> "Forgot Password"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            },
+            text = {
+                Column {
+                    when {
+                        !uiState.isOtpSent -> {
+                            Text("Enter your email address to receive an OTP.", color = Color.Black)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            BlingTextField(
+                                value = uiState.forgotPasswordEmail,
+                                onValueChange = viewModel::onForgotPasswordEmailChanged,
+                                placeholder = "Email address",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                            )
+                            if (uiState.forgotPasswordError != null) {
+                                Text(
+                                    text = uiState.forgotPasswordError!!,
+                                    color = Color.Red,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                        !uiState.isOtpVerified -> {
+                            Text("Enter the OTP sent to ${uiState.forgotPasswordEmail}", color = Color.Black)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            BlingTextField(
+                                value = uiState.otp,
+                                onValueChange = viewModel::onOtpChanged,
+                                placeholder = "Enter 6-digit OTP",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                            )
+                            if (uiState.verifyOtpError != null) {
+                                Text(
+                                    text = uiState.verifyOtpError!!,
+                                    color = Color.Red,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                        else -> {
+                            Text("Enter your new password below.", color = Color.Black)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            BlingTextField(
+                                value = uiState.newPassword,
+                                onValueChange = viewModel::onNewPasswordChanged,
+                                placeholder = "New password (min 5 chars)",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                visualTransformation = PasswordVisualTransformation()
+                            )
+                            if (uiState.resetPasswordError != null) {
+                                Text(
+                                    text = uiState.resetPasswordError!!,
+                                    color = Color.Red,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        when {
+                            !uiState.isOtpSent -> {
+                                viewModel.forgotPassword { message ->
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            !uiState.isOtpVerified -> {
+                                viewModel.verifyOtp { message ->
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            else -> {
+                                viewModel.resetPassword { message ->
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                    showForgotPasswordDialog = false
+                                    viewModel.resetForgotPasswordState()
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BlingYellow, contentColor = Color.Black),
+                    enabled = when {
+                        uiState.isOtpVerified -> !uiState.isResetPasswordLoading
+                        uiState.isOtpSent -> !uiState.isVerifyOtpLoading
+                        else -> !uiState.isForgotPasswordLoading
+                    }
+                ) {
+                    if (uiState.isForgotPasswordLoading || uiState.isVerifyOtpLoading || uiState.isResetPasswordLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
+                    } else {
+                        Text(
+                            text = when {
+                                uiState.isOtpVerified -> "Reset Password"
+                                uiState.isOtpSent -> "Verify OTP"
+                                else -> "Send OTP"
+                            }
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showForgotPasswordDialog = false
+                    viewModel.resetForgotPasswordState()
+                }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF63656A) // Dark gray outer background
+        color = Color(0xFF63656A)
     ) {
         Column(
             modifier = Modifier
@@ -53,6 +192,8 @@ fun LoginScreen(
                     color = Color.White,
                     shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp)
                 )
+                .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(horizontal = 32.dp, vertical = 40.dp)
         ) {
             // Logo and App Name
@@ -84,7 +225,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Welcome Back
             Text(
                 text = "Welcome back",
                 style = MaterialTheme.typography.displaySmall.copy(
@@ -104,7 +244,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Phone Number
             BlingLabel("PHONE NUMBER")
             BlingTextField(
                 value = uiState.phoneNumber,
@@ -118,7 +257,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Password
             BlingLabel("PASSWORD")
             BlingTextField(
                 value = uiState.password,
@@ -132,7 +270,19 @@ fun LoginScreen(
                     onDone = {
                         focusManager.clearFocus()
                         if (uiState.canSignIn) {
-                            viewModel.signIn(onLoginSuccess)
+                            viewModel.signIn { userType, userId ->
+                                try {
+                                    FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                        if (task.isSuccessful) {
+                                            println("AuthDebug: FCM Token = ${task.result}, userId = $userId")
+                                            viewModel.updateFcmToken(userId, task.result)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    println("AuthDebug: Firebase error: ${e.message}")
+                                }
+                                onLoginSuccess(userType)
+                            }
                         }
                     }
                 ),
@@ -148,22 +298,37 @@ fun LoginScreen(
                 }
             )
 
+            Spacer(modifier = Modifier.height(24.dp))
+
             if (uiState.error != null) {
                 Text(
                     text = uiState.error!!,
                     color = Color.Red,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp)
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .padding(bottom = 16.dp)
+                        .align(Alignment.CenterHorizontally)
                 )
             }
-
-            Spacer(modifier = Modifier.height(40.dp))
 
             // Sign In Button
             Button(
                 onClick = {
                     focusManager.clearFocus()
-                    viewModel.signIn(onLoginSuccess)
+                    viewModel.signIn { userType, userId ->
+                        try {
+                            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    println("AuthDebug: FCM Token = ${task.result}, userId = $userId")
+                                    viewModel.updateFcmToken(userId, task.result)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("AuthDebug: Firebase error: ${e.message}")
+                        }
+                        onLoginSuccess(userType)
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -186,36 +351,37 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                onClick = { showForgotPasswordDialog = true },
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(
+                    text = "Forgot password?",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
 
-            // Divider and "New here?"
+            Spacer(modifier = Modifier.height(24.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = Color.LightGray.copy(alpha = 0.3f)
-                )
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray.copy(alpha = 0.3f))
                 Text(
                     text = "New here?",
                     modifier = Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = Color.LightGray.copy(alpha = 0.3f)
-                )
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray.copy(alpha = 0.3f))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Create an Account
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 TextButton(onClick = onNavigateToRegister) {
                     Text(
                         text = "Create an Account \u2192",
@@ -226,7 +392,7 @@ fun LoginScreen(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
         }
     }

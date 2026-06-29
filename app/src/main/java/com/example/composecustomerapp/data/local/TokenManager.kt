@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "auth_prefs")
@@ -40,5 +41,10 @@ class TokenManager(private val context: Context) {
             preferences.remove(AUTH_TOKEN_KEY)
             preferences.remove(USER_ID_KEY)
         }
+    }
+
+    // 👇 New: read token as a one-shot suspend call
+    suspend fun getAuthToken(): String? {
+        return authToken.firstOrNull()
     }
 }

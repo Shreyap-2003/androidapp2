@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
@@ -26,22 +27,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.composecustomerapp.ui.home.HomeViewModel
-import com.example.composecustomerapp.ui.components.BlingBottomNavigation
 
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory),
     homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
+    onNavigateBack: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onNavigateToCart: () -> Unit = {},
     onNavigateToOrders: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
+    onNavigateToPartnerHome: () -> Unit = {},
+    onNavigateToPartnerOrders: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val homeUiState by homeViewModel.uiState.collectAsState()
     var showLogoutDialog by remember { mutableStateOf(false) }
+
+    // Use both viewmodel states to prevent UI glitching during load
+    val isPartner = homeUiState.userType == "PARTNER" || uiState.role == "PARTNER"
 
     if (showLogoutDialog) {
         // ... dialog code ...
@@ -70,24 +76,7 @@ fun ProfileScreen(
     }
 
     Scaffold(
-        topBar = {
-            ProfileTopBar(
-                firstName = uiState.firstName,
-                onLogoClick = onNavigateHome
-            )
-        },
-        bottomBar = {
-            if (homeUiState.isAuthenticated) {
-                BlingBottomNavigation(
-                    currentRoute = "profile",
-                    cartItemCount = homeUiState.cartTotalItems,
-                    onHomeClick = onNavigateHome,
-                    onSearchClick = onNavigateToSearch,
-                    onCartClick = onNavigateToCart,
-                    onOrdersClick = onNavigateToOrders
-                )
-            }
-        }
+        containerColor = Color(0xFFF9FAFB)
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -98,11 +87,33 @@ fun ProfileScreen(
                 modifier = Modifier
                     .padding(innerPadding)
                     .fillMaxSize()
-                    .background(Color(0xFFF9FAFB)) // Very light gray background
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Back Button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                        .clickable { onNavigateBack() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color(0xFF6B5800),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Back",
+                        color = Color(0xFF6B5800),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+
                 // Profile Image Section with circular background
                 ProfileImageHeader(uiState.fullName, uiState.status)
 
@@ -122,11 +133,36 @@ fun ProfileScreen(
                         modifier = Modifier.weight(1f)
                     )
                     InfoCard(
+                        label = "EMAIL",
+                        value = uiState.email,
+                        icon = Icons.Default.Email,
+                        iconBg = Color(0xFFE0F2FE),
+                        iconTint = Color(0xFF0284C7),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Side-by-side Info Cards (Role and Joined)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    InfoCard(
                         label = "ROLE",
                         value = uiState.role,
-                        icon = Icons.Default.Person,
+                        icon = Icons.Default.Badge,
                         iconBg = Color(0xFFF3F4F6),
                         iconTint = Color(0xFF6B7280),
+                        modifier = Modifier.weight(1f)
+                    )
+                    InfoCard(
+                        label = "JOINED",
+                        value = uiState.membershipSince.replace("Member since ", ""),
+                        icon = Icons.Default.Event,
+                        iconBg = Color(0xFFE0F2FE),
+                        iconTint = Color(0xFF0369A1),
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -137,14 +173,6 @@ fun ProfileScreen(
                 LocationCard(
                     location = uiState.location,
                     coordinates = uiState.coordinates
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Premium Member Card
-                PremiumCard(
-                    type = uiState.membershipType,
-                    since = uiState.membershipSince
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -180,26 +208,30 @@ fun ProfileTopBar(firstName: String, onLogoClick: () -> Unit) {
                 modifier = Modifier.size(28.dp).clickable { onLogoClick() }
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "Bling",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.clickable { onLogoClick() }
-            )
+            
+            Column(
+                modifier = Modifier.clickable { onLogoClick() },
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Bling",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Hi $firstName!",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.9f)
+                )
+            }
             
             Spacer(modifier = Modifier.weight(1f))
             
-            Text(
-                text = "Hi $firstName!",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.width(12.dp))
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.3f)),
                 contentAlignment = Alignment.Center
@@ -208,7 +240,7 @@ fun ProfileTopBar(firstName: String, onLogoClick: () -> Unit) {
                     imageVector = Icons.Default.Person,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -340,34 +372,6 @@ fun LocationCard(location: String, coordinates: String) {
             Column(horizontalAlignment = Alignment.End) {
                 Text("Coordinates", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 Text(coordinates, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-            }
-        }
-    }
-}
-
-@Composable
-fun PremiumCard(type: String, since: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF333333)) // Dark gray
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(Color(0xFF854D0E), CircleShape), // Brownish circle
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Verified, contentDescription = null, tint = Color.White)
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(type, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
-                Text(since, style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
             }
         }
     }

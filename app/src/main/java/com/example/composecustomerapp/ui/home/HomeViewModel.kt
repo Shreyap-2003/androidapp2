@@ -7,9 +7,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.composecustomerapp.MainApplication
 import com.example.composecustomerapp.data.local.TokenManager
+import com.example.composecustomerapp.data.model.Order
+import com.example.composecustomerapp.data.repository.AuthRepository
 import com.example.composecustomerapp.data.repository.CategoryRepository
 import com.example.composecustomerapp.data.repository.ItemRepository
 import com.example.composecustomerapp.data.repository.OrderRepository
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,24 +27,16 @@ data class Category(
     val imageUrl: String
 )
 
-data class Order(
-    val id: String,
-    val orderNumber: String,
-    val name: String,
-    val price: Int,
-    val status: String,
-    val imageUrl: String,
-    val date: String
-)
-
 data class HomeUiState(
     val categories: List<Category> = emptyList(),
     val activeOrders: List<Order> = emptyList(),
     val isAuthenticated: Boolean = false,
     val username: String = "Shreya",
+    val userType: String = "",
     val userProfileImageUrl: String = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100",
     val cartItems: Map<String, Int> = emptyMap(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val allProducts: List<com.example.composecustomerapp.ui.components.Product> = emptyList()
 ) {
     val cartTotalItems: Int get() = cartItems.values.sum()
@@ -57,6 +53,7 @@ class HomeViewModel(
     private val categoryRepository: CategoryRepository,
     private val itemRepository: ItemRepository,
     private val orderRepository: OrderRepository,
+    private val authRepository: AuthRepository,
     private val tokenManager: TokenManager
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -64,8 +61,72 @@ class HomeViewModel(
 
     init {
         loadHomeData()
-        fetchCategories()
-        fetchAllProducts()
+        refreshData()
+        startOrderPolling()
+    }
+
+    fun refreshData() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            // Fetch everything in parallel
+            val profileJob = launch { fetchUserProfile() }
+            val categoriesJob = launch { fetchCategories() }
+            val productsJob = launch { fetchAllProducts() }
+            val ordersJob = launch { refreshActiveOrders() }
+            
+            profileJob.join()
+            categoriesJob.join()
+            productsJob.join()
+            ordersJob.join()
+            
+            _uiState.update { it.copy(isRefreshing = false) }
+        }
+    }
+
+    private fun startOrderPolling() {
+        viewModelScope.launch {
+            while (true) {
+                refreshActiveOrders()
+                delay(5.seconds)
+            }
+        }
+    }
+
+    private suspend fun refreshActiveOrders() {
+        val userIdStr = tokenManager.userId.first()
+        val customerId = userIdStr?.toIntOrNull() ?: return
+
+        val result = orderRepository.getOrders(customerId)
+        result.onSuccess { allOrders ->
+            val active = allOrders.filter { it.status == "OPEN" || it.status == "ASSIGNED" || it.status == "IN_PROGRESS" }
+            _uiState.update { it.copy(activeOrders = active) }
+        }
+    }
+
+    private fun fetchUserProfile() {
+        viewModelScope.launch {
+            try {
+                val userId = tokenManager.userId.first()
+                if (userId != null) {
+                    val result = authRepository.getUserProfile(userId)
+                    result.onSuccess { user ->
+                        _uiState.update { 
+                            it.copy(
+                                isAuthenticated = true,
+                                username = user.firstName ?: "Shreya",
+                                userType = user.userType ?: ""
+                            )
+                        }
+                    }.onFailure {
+                        // If profile fetch fails, we still allow them to see the home screen
+                        _uiState.update { it.copy(isAuthenticated = true) }
+                    }
+                }
+            } catch (e: Exception) {
+                // Prevent crash on initialization errors
+                println("AuthDebug: Error in fetchUserProfile: ${e.message}")
+            }
+        }
     }
 
     private fun fetchAllProducts() {
@@ -193,32 +254,16 @@ class HomeViewModel(
         _uiState.update { 
             it.copy(
                 allProducts = products,
-                activeOrders = listOf(
-                    Order(
-                        "65",
-                        "65",
-                        "Hide & Seek Chocochip Cookies",
-                        30,
-                        "IN_PROGRESS",
-                        "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&q=80&w=200",
-                        "June 8, 2026"
-                    ),
-                    Order(
-                        "66",
-                        "66",
-                        "Unibic Fruit & Nut Cookies",
-                        70,
-                        "IN_PROGRESS",
-                        "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&q=80&w=200",
-                        "June 8, 2026"
-                    )
-                )
+                activeOrders = emptyList()
             )
         }
     }
 
     fun setAuthenticated(isAuthenticated: Boolean) {
         _uiState.update { it.copy(isAuthenticated = isAuthenticated) }
+        if (isAuthenticated) {
+            fetchUserProfile()
+        }
     }
 
     fun updateCart(productId: String, delta: Int) {
@@ -251,6 +296,7 @@ class HomeViewModel(
                     application.categoryRepository, 
                     application.itemRepository,
                     application.orderRepository,
+                    application.authRepository,
                     application.tokenManager
                 )
             }

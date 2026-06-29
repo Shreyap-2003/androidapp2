@@ -27,8 +27,8 @@ import com.example.composecustomerapp.ui.components.ProductCard
 
 @Composable
 fun CakesScreen(
-    viewModel: CakesViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    viewModel: CakesViewModel = viewModel(factory = CakesViewModel.Factory),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateToLogin: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},

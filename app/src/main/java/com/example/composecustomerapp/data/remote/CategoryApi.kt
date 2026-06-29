@@ -4,6 +4,7 @@ import com.example.composecustomerapp.data.model.CategoryResponse
 import com.example.composecustomerapp.data.model.SubCategoryResponse
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Path
 
 interface CategoryApi {
     @GET("api/category")
@@ -11,4 +12,7 @@ interface CategoryApi {
 
     @GET("api/subcategory")
     suspend fun getSubCategories(): Response<List<SubCategoryResponse>>
+
+    @GET("api/subcategory/category/{categoryId}")
+    suspend fun getSubCategoriesByCategory(@Path("categoryId") categoryId: Int): Response<List<SubCategoryResponse>>
 }

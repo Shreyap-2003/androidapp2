@@ -1,10 +1,27 @@
 package com.example.composecustomerapp.ui.register
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import android.location.Location
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -12,19 +29,31 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,12 +62,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.composecustomerapp.ui.components.BlingLabel
 import com.example.composecustomerapp.ui.components.BlingTextField
 import com.example.composecustomerapp.ui.components.BlingYellow
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.delay
 
+@SuppressLint("MissingPermission")
 @Composable
 fun RegisterScreen(
     viewModel: RegisterViewModel = viewModel(factory = RegisterViewModel.Factory),
@@ -48,6 +81,52 @@ fun RegisterScreen(
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions.values.all { it }
+        if (granted) {
+            // Permission granted, will fetch location when needed
+        } else {
+            Toast.makeText(
+                context,
+                "Location permission is required to capture address coordinates",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun requestLocation() {
+        val hasFineLocation = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasCoarseLocation = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasFineLocation || hasCoarseLocation) {
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener { location: Location? ->
+                    if (location != null) {
+                        viewModel.updateLocation(location.latitude, location.longitude)
+                        // Optional: show a small toast or update UI to show coordinates captured
+                    }
+                }
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
 
     LaunchedEffect(uiState.isRegistered) {
         if (uiState.isRegistered) {
@@ -81,6 +160,7 @@ fun RegisterScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
+                        .imePadding()
                         .padding(24.dp)
                 ) {
                     // Logo and App Name
@@ -161,8 +241,20 @@ fun RegisterScreen(
                         onValueChange = viewModel::onPhoneNumberChanged,
                         placeholder = "10-digit number",
                         keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Phone,
-                            imeAction = ImeAction.Next
+                            keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Email
+                    BlingLabel("EMAIL ADDRESS")
+                    BlingTextField(
+                        value = uiState.email,
+                        onValueChange = viewModel::onEmailChanged,
+                        placeholder = "example@domain.com",
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email, imeAction = ImeAction.Next
                         )
                     )
 
@@ -175,8 +267,7 @@ fun RegisterScreen(
                         onValueChange = viewModel::onPasswordChanged,
                         placeholder = "Min 5 characters",
                         keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Next
+                            keyboardType = KeyboardType.Password, imeAction = ImeAction.Next
                         ),
                         visualTransformation = if (uiState.isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -187,24 +278,41 @@ fun RegisterScreen(
                                     tint = Color.LightGray
                                 )
                             }
-                        }
-                    )
+                        })
 
                     Spacer(modifier = Modifier.height(24.dp))
 
                     // Address
                     BlingLabel("ADDRESS")
                     BlingTextField(
-                        value = uiState.address,
-                        onValueChange = viewModel::onAddressChanged,
-                        placeholder = "Full address",
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = { focusManager.clearFocus() }
+                        value = uiState.address, onValueChange = {
+                        viewModel.onAddressChanged(it)
+//                        requestLocation()
+                    }, placeholder = "Full address", keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Done
+                    ), keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() }), trailingIcon = {
+                        IconButton(onClick = { requestLocation() }) {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = "Capture Location",
+                                tint = if (uiState.latitude != null) BlingYellow else Color.LightGray
+                            )
+                        }
+                    })
+
+                    if (uiState.latitude != null && uiState.longitude != null) {
+                        Text(
+                            text = "Location captured: ${
+                                String.format(
+                                    "%.4f", uiState.latitude
+                                )
+                            }, ${String.format("%.4f", uiState.longitude)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF059669), // Green
+                            modifier = Modifier.padding(top = 4.dp)
                         )
-                    )
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -241,22 +349,23 @@ fun RegisterScreen(
 
                     // Create Account Button
                     Button(
-                        onClick = { 
+                        onClick = {
                             focusManager.clearFocus()
-                            viewModel.createAccount {} 
+                            viewModel.createAccount {}
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = BlingYellow,
-                            contentColor = Color.Black
+                            containerColor = BlingYellow, contentColor = Color.Black
                         ),
                         enabled = uiState.canRegister && !uiState.isLoading
                     ) {
                         if (uiState.isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp), color = Color.Black
+                            )
                         } else {
                             Text(
                                 text = "Create account",
@@ -329,10 +438,7 @@ fun RegisterScreen(
 
 @Composable
 fun UserTypeButton(
-    text: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    text: String, isSelected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
@@ -346,8 +452,7 @@ fun UserTypeButton(
                 color = if (isSelected) BlingYellow else Color.LightGray.copy(alpha = 0.5f),
                 shape = RoundedCornerShape(8.dp)
             )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+            .clickable(onClick = onClick), contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,

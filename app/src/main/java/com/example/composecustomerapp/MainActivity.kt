@@ -1,75 +1,114 @@
 package com.example.composecustomerapp
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.*
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.composecustomerapp.data.model.Order
+import com.example.composecustomerapp.util.NotificationBus
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.composecustomerapp.ui.home.BakeryScreen
-import com.example.composecustomerapp.ui.home.CategoryScreen
-import com.example.composecustomerapp.ui.home.CakesScreen
-import com.example.composecustomerapp.ui.home.CakesViewModel
-import com.example.composecustomerapp.ui.home.CartScreen
-import com.example.composecustomerapp.ui.home.CookiesScreen
-import com.example.composecustomerapp.ui.home.CookiesViewModel
-import com.example.composecustomerapp.ui.home.CoolDrinksScreen
-import com.example.composecustomerapp.ui.home.DairyProductScreen
-import com.example.composecustomerapp.ui.home.DairyViewModel
-import com.example.composecustomerapp.ui.home.FruitJuicesScreen
-import com.example.composecustomerapp.ui.home.FruitJuicesViewModel
-import com.example.composecustomerapp.ui.home.FruitsScreen
-import com.example.composecustomerapp.ui.home.FruitsViewModel
-import com.example.composecustomerapp.ui.home.FrozenFoodsScreen
-import com.example.composecustomerapp.ui.home.FrozenFoodsViewModel
-import com.example.composecustomerapp.ui.home.GroceryScreen
-import com.example.composecustomerapp.ui.home.HomeScreen
-import com.example.composecustomerapp.ui.home.HomeViewModel
-import com.example.composecustomerapp.ui.home.InstantFoodsScreen
-import com.example.composecustomerapp.ui.home.NoodlesScreen
-import com.example.composecustomerapp.ui.home.NoodlesViewModel
-import com.example.composecustomerapp.ui.home.OrderDetailScreen
-import com.example.composecustomerapp.ui.home.OrderDetailViewModel
-import com.example.composecustomerapp.ui.home.OrdersScreen
-import com.example.composecustomerapp.ui.home.OrdersViewModel
-import com.example.composecustomerapp.ui.home.RusksWafersScreen
-import com.example.composecustomerapp.ui.home.RusksWafersViewModel
-import com.example.composecustomerapp.ui.home.SearchScreen
-import com.example.composecustomerapp.ui.home.SearchViewModel
-import com.example.composecustomerapp.ui.home.SoftDrinksScreen
-import com.example.composecustomerapp.ui.home.SoftDrinksViewModel
-import com.example.composecustomerapp.ui.home.EnergyDrinksScreen
-import com.example.composecustomerapp.ui.home.EnergyDrinksViewModel
-import com.example.composecustomerapp.ui.home.SoupsScreen
-import com.example.composecustomerapp.ui.home.SoupsViewModel
-import com.example.composecustomerapp.ui.home.VegetablesScreen
-import com.example.composecustomerapp.ui.home.VegetablesViewModel
+import com.example.composecustomerapp.ui.home.*
 import com.example.composecustomerapp.ui.login.LoginScreen
 import com.example.composecustomerapp.ui.profile.ProfileScreen
 import com.example.composecustomerapp.ui.register.RegisterScreen
 import com.example.composecustomerapp.ui.theme.ComposeCustomerAppTheme
 
 class MainActivity : ComponentActivity() {
+
+    private var currentIntent by mutableStateOf<Intent?>(null)
+    
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            println("AuthDebug: Notification permission granted")
+        } else {
+            println("AuthDebug: Notification permission denied")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        currentIntent = intent
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentIntent = intent
         enableEdgeToEdge()
+        
+        // Ask for notification permission (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         setContent {
             ComposeCustomerAppTheme {
                 val navController = rememberNavController()
                 val homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
-                val ordersViewModel: OrdersViewModel = viewModel()
+                val ordersViewModel: OrdersViewModel = viewModel(factory = OrdersViewModel.Factory)
+                
+                // Handle notification click navigation
+                LaunchedEffect(currentIntent) {
+                    val intent = currentIntent ?: return@LaunchedEffect
+                    if (intent.getBooleanExtra("OPEN_PARTNER_HOME", false)) {
+                        println("AuthDebug: Notification clicked, handling navigation to partner_home")
+
+                        val orderId = intent.getStringExtra("orderId")
+                        val incomingOrder = if (orderId != null) {
+                            Order(
+                                id = orderId,
+                                orderNumber = orderId,
+                                name = intent.getStringExtra("itemName") ?: "Bling Order",
+                                price = intent.getStringExtra("price")?.toDoubleOrNull() ?: 0.0,
+                                status = "OPEN",
+                                imageUrl = intent.getStringExtra("imageUrl") ?: "",
+                                date = "Just now",
+                                customerName = intent.getStringExtra("customerName") ?: "New Customer",
+                                customerPhoneNumber = intent.getStringExtra("customerPhone") ?: "",
+                                customerAddress = intent.getStringExtra("address") ?: "Check Dashboard"
+                            )
+                        } else null
+
+                        // 1. Navigate to ensure we are on the dashboard
+                        navController.navigate("partner_home") {
+                            popUpTo(navController.graph.startDestinationId)
+                            launchSingleTop = true
+                        }
+
+                        // 2. Emit the order to trigger the bottom sheet
+                        incomingOrder?.let {
+                            println("AuthDebug: Emitting order ${it.id} to NotificationBus")
+                            NotificationBus.emitOrder(it)
+                        }
+
+                        // 3. Reset the intent state
+                        currentIntent = null
+                    }
+                }
                 
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
                         HomeScreen(
                             viewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateToCategory = { categoryTitle ->
                                 when (categoryTitle) {
                                     "Grocery" -> navController.navigate("grocery")
@@ -84,18 +123,10 @@ class MainActivity : ComponentActivity() {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            },
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") },
                             onNavigateToOrderDetail = { orderId ->
                                 navController.navigate("order_detail/$orderId")
                             }
@@ -111,15 +142,9 @@ class MainActivity : ComponentActivity() {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            }
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") },
+                            onNavigateToProfile = { navController.navigate("profile") }
                         )
                     }
                     composable("orders") {
@@ -131,15 +156,9 @@ class MainActivity : ComponentActivity() {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToProfile = { navController.navigate("profile") },
                             onNavigateToOrderDetail = { orderId ->
                                 navController.navigate("order_detail/$orderId")
                             }
@@ -150,80 +169,54 @@ class MainActivity : ComponentActivity() {
                         arguments = listOf(navArgument("orderId") { type = NavType.StringType })
                     ) { backStackEntry ->
                         val orderId = backStackEntry.arguments?.getString("orderId") ?: ""
-                        val orderDetailViewModel: OrderDetailViewModel = viewModel()
+                        val orderDetailViewModel: OrderDetailViewModel = viewModel(factory = OrderDetailViewModel.Factory)
                         OrderDetailScreen(
                             orderId = orderId,
                             viewModel = orderDetailViewModel,
                             homeViewModel = homeViewModel,
-                            ordersViewModel = ordersViewModel,
-                            onNavigateBack = {
-                                navController.popBackStack()
-                            },
+                            onNavigateBack = { navController.popBackStack() },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToProfile = { navController.navigate("profile") }
                         )
                     }
                     composable("cart") {
                         CartScreen(
                             viewModel = homeViewModel,
-                            onNavigateBack = {
-                                navController.popBackStack()
-                            },
+                            onNavigateBack = { navController.popBackStack() },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("grocery") {
                         GroceryScreen(
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            },
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") },
                             onSubCategoryClick = { subCategory ->
                                 when (subCategory) {
                                     "Dairy Products" -> navController.navigate("dairy")
                                     "Vegetables" -> navController.navigate("vegetables")
                                     "Fruits" -> navController.navigate("fruits")
                                 }
-                                println("Clicked subcategory: $subCategory")
                             }
                         )
                     }
@@ -232,26 +225,16 @@ class MainActivity : ComponentActivity() {
                         DairyProductScreen(
                             viewModel = dairyViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("vegetables") {
@@ -259,26 +242,16 @@ class MainActivity : ComponentActivity() {
                         VegetablesScreen(
                             viewModel = vegetablesViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("fruits") {
@@ -286,51 +259,31 @@ class MainActivity : ComponentActivity() {
                         FruitsScreen(
                             viewModel = fruitsViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("cool_drinks") {
                         CoolDrinksScreen(
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            },
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") },
                             onSubCategoryClick = { subCategory ->
                                 when (subCategory) {
                                     "Soft Drinks" -> navController.navigate("soft_drinks")
@@ -345,26 +298,16 @@ class MainActivity : ComponentActivity() {
                         SoftDrinksScreen(
                             viewModel = softDrinksViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("fruit_juices") {
@@ -372,26 +315,16 @@ class MainActivity : ComponentActivity() {
                         FruitJuicesScreen(
                             viewModel = fruitJuicesViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("energy_drinks") {
@@ -399,58 +332,37 @@ class MainActivity : ComponentActivity() {
                         EnergyDrinksScreen(
                             viewModel = energyDrinksViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("bakery") {
                         BakeryScreen(
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            },
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") },
                             onSubCategoryClick = { subCategory ->
                                 when (subCategory) {
                                     "Cookies" -> navController.navigate("cookies")
                                     "Cakes" -> navController.navigate("cakes")
                                     "Rusks & Wafers" -> navController.navigate("rusks_wafers")
                                 }
-                                println("Clicked subcategory: $subCategory")
                             }
                         )
                     }
@@ -459,26 +371,16 @@ class MainActivity : ComponentActivity() {
                         CookiesScreen(
                             viewModel = cookiesViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("cakes") {
@@ -486,26 +388,16 @@ class MainActivity : ComponentActivity() {
                         CakesScreen(
                             viewModel = cakesViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("rusks_wafers") {
@@ -513,58 +405,37 @@ class MainActivity : ComponentActivity() {
                         RusksWafersScreen(
                             viewModel = rusksWafersViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("instant_foods") {
                         InstantFoodsScreen(
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            },
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") },
                             onSubCategoryClick = { subCategory ->
                                 when (subCategory) {
                                     "Noodles" -> navController.navigate("noodles")
                                     "Soups" -> navController.navigate("soups")
                                     "Frozen Foods" -> navController.navigate("frozen_foods")
                                 }
-                                println("Clicked subcategory: $subCategory")
                             }
                         )
                     }
@@ -573,26 +444,16 @@ class MainActivity : ComponentActivity() {
                         NoodlesScreen(
                             viewModel = noodlesViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("soups") {
@@ -600,26 +461,16 @@ class MainActivity : ComponentActivity() {
                         SoupsScreen(
                             viewModel = soupsViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("frozen_foods") {
@@ -627,38 +478,30 @@ class MainActivity : ComponentActivity() {
                         FrozenFoodsScreen(
                             viewModel = frozenFoodsViewModel,
                             homeViewModel = homeViewModel,
-                            onNavigateToLogin = {
-                                navController.navigate("login")
-                            },
+                            onNavigateToLogin = { navController.navigate("login") },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
-                            },
-                            onNavigateToProfile = {
-                                navController.navigate("profile")
-                            },
-                            onNavigateToCart = {
-                                navController.navigate("cart")
-                            },
-                            onNavigateToOrders = {
-                                navController.navigate("orders")
-                            }
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToCart = { navController.navigate("cart") },
+                            onNavigateToOrders = { navController.navigate("orders") }
                         )
                     }
                     composable("login") {
                         LoginScreen(
-                            onNavigateToRegister = {
-                                navController.navigate("register")
-                            },
-                            onLoginSuccess = {
-                                println("AuthDebug: onLoginSuccess triggered in MainActivity")
-                                homeViewModel.setAuthenticated(true)
-                                navController.navigate("home") {
-                                    popUpTo("home") { inclusive = true }
+                            onNavigateToRegister = { navController.navigate("register") },
+                            onLoginSuccess = { userType ->
+                                try {
+                                    homeViewModel.setAuthenticated(true)
+                                    val startDestination = if (userType == "PARTNER") "partner_home" else "home"
+                                    navController.navigate(startDestination) {
+                                        popUpTo("login") { inclusive = true }
+                                    }
+                                } catch (e: Exception) {
+                                    println("AuthDebug: Navigation error: ${e.message}")
                                 }
                             },
                             onLogoClick = {
@@ -685,20 +528,46 @@ class MainActivity : ComponentActivity() {
                     composable("profile") {
                         ProfileScreen(
                             homeViewModel = homeViewModel,
+                            onNavigateBack = { navController.popBackStack() },
                             onNavigateHome = {
                                 navController.navigate("home") {
                                     popUpTo("home") { inclusive = true }
                                 }
                             },
-                            onNavigateToSearch = {
-                                navController.navigate("search")
+                            onNavigateToSearch = { navController.navigate("search") },
+                            onNavigateToPartnerHome = {
+                                navController.navigate("partner_home") {
+                                    popUpTo("partner_home") { inclusive = true }
+                                }
                             },
+                            onNavigateToPartnerOrders = { navController.navigate("partner_orders") },
                             onLogout = {
                                 homeViewModel.setAuthenticated(false)
                                 navController.navigate("home") {
                                     popUpTo(navController.graph.id) { inclusive = true }
                                 }
                             }
+                        )
+                    }
+                    composable("partner_home") {
+                        PartnerHomeScreen(
+                            onNavigateToLogin = {
+                                navController.navigate("login") {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            },
+                            onNavigateToProfile = { navController.navigate("profile") },
+                            onNavigateToOrders = { navController.navigate("partner_orders") }
+                        )
+                    }
+                    composable("partner_orders") {
+                        PartnerOrdersScreen(
+                            onNavigateHome = {
+                                navController.navigate("partner_home") {
+                                    popUpTo("partner_home") { inclusive = true }
+                                }
+                            },
+                            onNavigateToProfile = { navController.navigate("profile") }
                         )
                     }
                     composable(
@@ -708,9 +577,7 @@ class MainActivity : ComponentActivity() {
                         val title = backStackEntry.arguments?.getString("title") ?: ""
                         CategoryScreen(
                             categoryTitle = title,
-                            onNavigateBack = {
-                                navController.popBackStack()
-                            }
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
                 }

@@ -18,4 +18,17 @@ class ItemRepository(
             Result.failure(e)
         }
     }
+
+    suspend fun getItemsBySubcategory(subcategoryId: Int): Result<List<ItemResponse>> {
+        return try {
+            val response = itemApi.getItemsBySubcategory(subcategoryId)
+            if (response.isSuccessful) {
+                Result.success(response.body() ?: emptyList())
+            } else {
+                Result.failure(Exception("Error: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

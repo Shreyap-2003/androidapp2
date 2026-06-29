@@ -22,8 +22,11 @@ data class RegisterUiState(
     val firstName: String = "",
     val lastName: String = "",
     val phoneNumber: String = "",
+    val email: String = "",
     val password: String = "",
     val address: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val isPasswordVisible: Boolean = false,
     val userType: UserType = UserType.CUSTOMER,
     val isLoading: Boolean = false,
@@ -33,6 +36,7 @@ data class RegisterUiState(
     val canRegister: Boolean get() = firstName.isNotEmpty() && 
             lastName.isNotEmpty() && 
             phoneNumber.length == 10 && 
+            email.isNotEmpty() &&
             password.length >= 5 &&
             address.isNotEmpty()
 }
@@ -56,6 +60,10 @@ class RegisterViewModel(private val repository: AuthRepository) : ViewModel() {
         }
     }
 
+    fun onEmailChanged(email: String) {
+        _uiState.update { it.copy(email = email, error = null) }
+    }
+
     fun onPasswordChanged(password: String) {
         _uiState.update { it.copy(password = password, error = null) }
     }
@@ -72,6 +80,10 @@ class RegisterViewModel(private val repository: AuthRepository) : ViewModel() {
         _uiState.update { it.copy(userType = type) }
     }
 
+    fun updateLocation(latitude: Double, longitude: Double) {
+        _uiState.update { it.copy(latitude = latitude, longitude = longitude) }
+    }
+
     fun createAccount(onSuccess: () -> Unit) {
         val currentState = _uiState.value
         if (!currentState.canRegister) return
@@ -83,8 +95,11 @@ class RegisterViewModel(private val repository: AuthRepository) : ViewModel() {
                 lastName = currentState.lastName,
                 userType = currentState.userType.name,
                 phoneNumber = currentState.phoneNumber,
+                email = currentState.email,
                 password = currentState.password,
-                address = currentState.address
+                address = currentState.address,
+                latitude = currentState.latitude,
+                longitude = currentState.longitude
             )
             val result = repository.register(request)
             result.onSuccess {

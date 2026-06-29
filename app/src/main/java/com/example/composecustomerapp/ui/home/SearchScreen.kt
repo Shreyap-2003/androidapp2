@@ -25,13 +25,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.composecustomerapp.ui.components.BlingBottomNavigation
-import com.example.composecustomerapp.ui.components.BlingYellow
 import com.example.composecustomerapp.ui.components.ProductCard
 
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateHome: () -> Unit = {},
     onNavigateToCart: () -> Unit = {},
     onNavigateToOrders: () -> Unit = {},
@@ -87,6 +86,9 @@ fun SearchScreen(
                     }
                 },
                 colors = TextFieldDefaults.colors(
+                    focusedTextColor = Color.Black,
+                    unfocusedTextColor = Color.Black,
+                    cursorColor = Color.Black,
                     focusedContainerColor = Color(0xFFF3F4F6),
                     unfocusedContainerColor = Color(0xFFF3F4F6),
                     disabledContainerColor = Color(0xFFF3F4F6),
