@@ -12,65 +12,45 @@ import com.example.composecustomerapp.data.repository.OrderRepository
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
-data class OrdersUiState(
-    val selectedTab: OrderTab = OrderTab.ACTIVE,
+data class PartnerOrdersUiState(
     val isLoading: Boolean = false,
     val error: String? = null
 )
 
-enum class OrderTab {
-    ACTIVE, COMPLETED
-}
-
-class OrdersViewModel(
+class PartnerOrdersViewModel(
     private val orderRepository: OrderRepository,
     private val tokenManager: TokenManager
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(OrdersUiState())
-    val uiState: StateFlow<OrdersUiState> = _uiState.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val activeOrdersPaged: Flow<PagingData<Order>> = tokenManager.userId
-        .flatMapLatest { userIdStr ->
-            val userId = userIdStr?.toIntOrNull()
-            if (userId != null) {
-                orderRepository.getOrdersPaged(customerId = userId, status = "ACTIVE")
-            } else {
-                flowOf(PagingData.empty())
-            }
-        }.cachedIn(viewModelScope)
+    private val _uiState = MutableStateFlow(PartnerOrdersUiState())
+    val uiState: StateFlow<PartnerOrdersUiState> = _uiState.asStateFlow()
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val completedOrdersPaged: Flow<PagingData<Order>> = tokenManager.userId
         .flatMapLatest { userIdStr ->
             val userId = userIdStr?.toIntOrNull()
             if (userId != null) {
-                orderRepository.getOrdersPaged(customerId = userId, status = "COMPLETED")
+                orderRepository.getOrdersPaged(partnerId = userId, status = "COMPLETED")
             } else {
                 flowOf(PagingData.empty())
             }
         }.cachedIn(viewModelScope)
 
-    fun setSelectedTab(tab: OrderTab) {
-        _uiState.update { it.copy(selectedTab = tab) }
-    }
-
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as MainApplication)
-                OrdersViewModel(application.orderRepository, application.tokenManager)
+                PartnerOrdersViewModel(
+                    application.orderRepository,
+                    application.tokenManager
+                )
             }
         }
     }

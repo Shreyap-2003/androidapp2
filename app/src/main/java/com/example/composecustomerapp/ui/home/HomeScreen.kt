@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Person
 //import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,12 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.composecustomerapp.data.model.Order
 import com.example.composecustomerapp.ui.components.BlingBottomNavigation
 import com.example.composecustomerapp.ui.components.BlingYellow
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    viewModel: HomeViewModel = viewModel(),
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateToLogin: () -> Unit = {},
     onNavigateToCategory: (String) -> Unit = {},
     onNavigateHome: () -> Unit = {},
@@ -87,83 +90,90 @@ fun HomeScreen(
 //            }
 //        }
     ) { innerPadding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refreshData() },
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .background(Color.White),
-            contentPadding = PaddingValues(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Header Section
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Column {
-                    Text(
-                        text = "Welcome to Bling!",
-                        style = MaterialTheme.typography.displaySmall.copy(
-                            fontSize = 32.sp,
-                            lineHeight = 40.sp
-                        ),
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Lightning fast delivery at your doorstep.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.Gray.copy(alpha = 0.8f)
-                    )
-                    Spacer(modifier = Modifier.height(32.dp))
-                }
-            }
-
-            // Active Orders Section
-            if (uiState.isAuthenticated && uiState.activeOrders.isNotEmpty()) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White),
+                contentPadding = PaddingValues(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Header Section
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column {
                         Text(
-                            text = "Your Active Orders",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "Welcome to Bling!",
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontSize = 32.sp,
+                                lineHeight = 40.sp
+                            ),
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
-                        TextButton(onClick = onNavigateToOrders) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Lightning fast delivery at your doorstep.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.Gray.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                    }
+                }
+
+                // Active Orders Section
+                if (uiState.isAuthenticated && uiState.activeOrders.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                "View all",
-                                color = Color(0xFF6B5800),
-                                fontWeight = FontWeight.Bold
+                                text = "Your Active Orders",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
                             )
+                            TextButton(onClick = onNavigateToOrders) {
+                                Text(
+                                    "View all",
+                                    color = Color(0xFF6B5800),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    uiState.activeOrders.forEach { order ->
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            ActiveOrderCard(order, onClick = { onNavigateToOrderDetail(order.id) })
                         }
                     }
                 }
 
-                uiState.activeOrders.forEach { order ->
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        ActiveOrderCard(order, onClick = { onNavigateToOrderDetail(order.id) })
-                    }
+                // Shop by Category Title
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text = "Shop by Category",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
                 }
-            }
 
-            // Shop by Category Title
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    text = "Shop by Category",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-            }
-
-            // Categories Grid Items
-            items(uiState.categories) { category ->
-                CategoryItem(category, onClick = { onNavigateToCategory(category.title) })
+                // Categories Grid Items
+                items(uiState.categories) { category ->
+                    CategoryItem(category, onClick = { onNavigateToCategory(category.title) })
+                }
             }
         }
     }
@@ -198,31 +208,34 @@ fun HomeTopBar(
                 modifier = Modifier.size(28.dp).clickable { onLogoClick() }
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "Bling",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.clickable { onLogoClick() }
-            )
+            
+            Column(
+                modifier = Modifier.clickable { onLogoClick() },
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Bling",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+                if (isAuthenticated) {
+                    Text(
+                        text = "Hi $username!",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.weight(1f))
 
             if (isAuthenticated) {
-                Row(
-                    modifier = Modifier.clickable(onClick = onProfileClick),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Hi $username!",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+                IconButton(onClick = onProfileClick) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.2f)),
                         contentAlignment = Alignment.Center
@@ -231,7 +244,7 @@ fun HomeTopBar(
                             imageVector = Icons.Default.Person,
                             contentDescription = "Profile",
                             tint = Color.White,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -277,7 +290,7 @@ fun ActiveOrderCard(order: Order, onClick: () -> Unit = {}) {
                 modifier = Modifier
                     .size(64.dp)
                     .clip(RoundedCornerShape(12.dp)),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -285,6 +298,7 @@ fun ActiveOrderCard(order: Order, onClick: () -> Unit = {}) {
                     text = order.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    color = Color.Black,
                     maxLines = 1
                 )
                 Text(
@@ -301,8 +315,8 @@ fun ActiveOrderCard(order: Order, onClick: () -> Unit = {}) {
 @Composable
 fun StatusChip(status: String) {
     val (backgroundColor, textColor) = when (status) {
-        "ASSIGNED" -> Color(0xFFE6F4EA) to Color(0xFF1E8E3E)
-        "IN PROGRESS" -> Color(0xFFFFF7E6) to Color(0xFFD97706)
+        "ASSIGNED" -> Color(0xFFE6F4EA) to Color(0xFF1E8E3E) // Greenish
+        "IN_PROGRESS", "IN PROGRESS" -> Color(0xFFFFF7E6) to Color(0xFFEA580C) // Orange
         else -> Color.LightGray to Color.DarkGray
     }
     Surface(
@@ -314,7 +328,7 @@ fun StatusChip(status: String) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (status == "IN PROGRESS") {
+            if (status == "IN_PROGRESS" || status == "IN PROGRESS") {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
@@ -354,7 +368,7 @@ fun CategoryItem(category: Category, onClick: () -> Unit) {
                     .weight(1f)
                     .padding(8.dp)
                     .clip(RoundedCornerShape(20.dp)),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
             Column(
                 modifier = Modifier

@@ -27,8 +27,8 @@ import com.example.composecustomerapp.ui.components.ProductCard
 
 @Composable
 fun EnergyDrinksScreen(
-    viewModel: EnergyDrinksViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    viewModel: EnergyDrinksViewModel = viewModel(factory = EnergyDrinksViewModel.Factory),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateToLogin: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},

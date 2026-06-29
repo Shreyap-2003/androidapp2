@@ -1,6 +1,7 @@
 package com.example.composecustomerapp
 
 import android.app.Application
+import com.google.firebase.FirebaseApp
 import com.example.composecustomerapp.data.local.TokenManager
 import com.example.composecustomerapp.data.remote.RetrofitClient
 import com.example.composecustomerapp.data.repository.AuthRepository
@@ -17,6 +18,7 @@ class MainApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        FirebaseApp.initializeApp(this)
         tokenManager = TokenManager(this)
         val authApi = RetrofitClient.createAuthApi(tokenManager)
         authRepository = AuthRepository(authApi, tokenManager)
@@ -28,6 +30,6 @@ class MainApplication : Application() {
         itemRepository = ItemRepository(itemApi)
 
         val orderApi = RetrofitClient.createOrderApi(tokenManager)
-        orderRepository = OrderRepository(orderApi)
+        orderRepository = OrderRepository(orderApi, itemApi, authApi)
     }
 }

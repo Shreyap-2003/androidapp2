@@ -20,7 +20,8 @@ data class ProfileUiState(
     val firstName: String = "",
     val lastName: String = "",
     val phoneNumber: String = "",
-    val role: String = "CUSTOMER",
+    val email: String = "",
+    val role: String = "",
     val location: String = "",
     val coordinates: String = "",
     val membershipType: String = "Premium Member",
@@ -55,6 +56,7 @@ class ProfileViewModel(
                             lastName = user.lastName ?: "",
                             fullName = "${user.firstName} ${user.lastName}",
                             phoneNumber = user.phoneNumber ?: "",
+                            email = user.email ?: "",
                             role = user.userType ?: "CUSTOMER",
                             location = user.address ?: "",
                             coordinates = if (user.latitude != null && user.longitude != null) 

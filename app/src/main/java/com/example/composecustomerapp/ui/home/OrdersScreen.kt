@@ -1,11 +1,10 @@
 package com.example.composecustomerapp.ui.home
 
+import android.content.Intent
 import androidx.compose.foundation.background
-//import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,15 +25,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
+import com.example.composecustomerapp.data.model.Order
 import com.example.composecustomerapp.ui.components.BlingBottomNavigation
 import com.example.composecustomerapp.ui.components.BlingYellow
 
 @Composable
 fun OrdersScreen(
-    viewModel: OrdersViewModel = viewModel(),
-    homeViewModel: HomeViewModel = viewModel(),
+    viewModel: OrdersViewModel = viewModel(factory = OrdersViewModel.Factory),
+    homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     onNavigateHome: () -> Unit = {},
     onNavigateToCart: () -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
@@ -43,6 +46,11 @@ fun OrdersScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val homeUiState by homeViewModel.uiState.collectAsState()
+    
+    val activeOrders = viewModel.activeOrdersPaged.collectAsLazyPagingItems()
+    val completedOrders = viewModel.completedOrdersPaged.collectAsLazyPagingItems()
+    
+    val currentOrders = if (uiState.selectedTab == OrderTab.ACTIVE) activeOrders else completedOrders
 
     Scaffold(
         topBar = {
@@ -106,14 +114,67 @@ fun OrdersScreen(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                val orders = if (uiState.selectedTab == OrderTab.ACTIVE) uiState.activeOrders else uiState.completedOrders
-                
-                items(orders) { order ->
-                    OrderCard(
-                        order = order, 
-                        isCompleted = uiState.selectedTab == OrderTab.COMPLETED,
-                        onClick = { onNavigateToOrderDetail(order.id) }
-                    )
+                items(
+                    count = currentOrders.itemCount,
+                    key = { index -> 
+                        val order = currentOrders[index]
+                        order?.id ?: "loading_$index"
+                    }
+                ) { index ->
+                    val order = currentOrders[index]
+                    if (order != null) {
+                        OrderCard(
+                            order = order, 
+                            isCompleted = uiState.selectedTab == OrderTab.COMPLETED,
+                            onClick = { onNavigateToOrderDetail(order.id) }
+                        )
+                    }
+                }
+
+                item {
+                    currentOrders.apply {
+                        when {
+                            loadState.refresh is LoadState.Loading -> {
+                                Box(
+                                    modifier = Modifier.fillParentMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = Color.Black)
+                                }
+                            }
+                            loadState.refresh is LoadState.Error -> {
+                                val e = currentOrders.loadState.refresh as LoadState.Error
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = e.error.localizedMessage ?: "Error loading orders",
+                                        color = Color.Red
+                                    )
+                                    Button(onClick = { retry() }, modifier = Modifier.padding(top = 8.dp)) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
+                            loadState.append is LoadState.Loading -> {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = Color.Black)
+                                }
+                            }
+                            loadState.refresh is LoadState.NotLoading && itemCount == 0 -> {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("No orders found", color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (uiState.selectedTab == OrderTab.ACTIVE) {
@@ -149,6 +210,7 @@ fun OrderTabChip(text: String, isSelected: Boolean, onClick: () -> Unit) {
 
 @Composable
 fun OrderCard(order: Order, isCompleted: Boolean, onClick: () -> Unit = {}) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
@@ -222,6 +284,38 @@ fun OrderCard(order: Order, isCompleted: Boolean, onClick: () -> Unit = {}) {
                 }
             }
             
+            if (order.status == "ASSIGNED" && order.partnerName != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = Color(0xFFF3F4F6))
+                Spacer(modifier = Modifier.height(12.dp))
+                Column {
+                    Text(
+                        text = "PARTNER ASSIGNED",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = order.partnerName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    order.partnerPhoneNumber?.let { phone ->
+                        Text(
+                            text = "Call: $phone",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF6B5800),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { 
+                                val intent = Intent(Intent.ACTION_DIAL, "tel:$phone".toUri())
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
+            }
+            
             Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color(0xFFF3F4F6))
             Spacer(modifier = Modifier.height(12.dp))
@@ -252,14 +346,16 @@ fun OrderCard(order: Order, isCompleted: Boolean, onClick: () -> Unit = {}) {
 @Composable
 fun StatusBadge(status: String) {
     val containerColor = when (status) {
-        "IN_PROGRESS", "IN PROGRESS" -> Color(0xFFFFF9C4)
+        "IN_PROGRESS", "IN PROGRESS" -> Color(0xFFFFF7E6) // Light Orange
+        "ASSIGNED" -> Color(0xFFFFF9C4) // Yellowish
         "COMPLETED" -> Color(0xFFE6F4EA)
         "FAILED" -> Color(0xFFFFEBEE)
         "OPEN" -> Color(0xFFE3F2FD)
         else -> Color(0xFFE5E7EB)
     }
     val contentColor = when (status) {
-        "IN_PROGRESS", "IN PROGRESS" -> Color(0xFF854D0E)
+        "IN_PROGRESS", "IN PROGRESS" -> Color(0xFFEA580C) // Orange
+        "ASSIGNED" -> Color(0xFF854D0E) // Brownish
         "COMPLETED" -> Color(0xFF065F46)
         "FAILED" -> Color(0xFFB71C1C)
         "OPEN" -> Color(0xFF0D47A1)

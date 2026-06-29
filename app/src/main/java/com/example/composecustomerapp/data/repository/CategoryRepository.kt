@@ -32,4 +32,17 @@ class CategoryRepository(
             Result.failure(e)
         }
     }
+
+    suspend fun getSubCategoriesByCategory(categoryId: Int): Result<List<SubCategoryResponse>> {
+        return try {
+            val response = categoryApi.getSubCategoriesByCategory(categoryId)
+            if (response.isSuccessful) {
+                Result.success(response.body() ?: emptyList())
+            } else {
+                Result.failure(Exception("Error: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
